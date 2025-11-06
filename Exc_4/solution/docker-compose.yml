@@ -1,1 +1,42 @@
-# todo
+# Define the serviceses
+services:
+  # PostgreSQL database service
+  postgres:
+    image: postgres:18
+    container_name: postgres18
+    environment:
+      POSTGRES_DB: order
+      POSTGRES_USER: docker
+      POSTGRES_PASSWORD: docker
+    ports:
+      - "5432:5432"
+    networks:
+      - orders-net
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  # Application service
+  ordersystem:
+    build: .
+    container_name: ordersystem
+    depends_on:
+      - postgres # Wait for Postgres to start
+    restart: on-failure # Resart if crashes
+    environment:
+      POSTGRES_DB: order
+      POSTGRES_USER: docker
+      POSTGRES_PASSWORD: docker
+      POSTGRES_TCP_PORT: 5432
+      DB_HOST: postgres
+    ports:
+      - "3000:3000"
+    networks:
+      - orders-net
+    command: ["./ordersystem"] # Run the ordersystem binary
+
+networks:
+  orders-net:
+    driver: bridge  # Default driver
+
+volumes:
+    postgres_data:
