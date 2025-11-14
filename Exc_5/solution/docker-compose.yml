@@ -8,10 +8,27 @@ volumes:
   order_pg_vol:
 
 services:
+
   traefik:
     image: "traefik:v3.5.2"
-    # todo add traefik config
-    # todo only expose network web
+    container_name: traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --api.insecure=true
+    ports:
+      - "80:80"       # per localhost i orders.localhost
+      - "8080:8080"   # dashboard (opcional)
+    volumes:
+      # si uses Docker Desktop (WSL2), aquesta ruta funciona
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+      # si falla en Windows, substitueix per:
+      # - type: npipe
+      #   source: \\.\pipe\docker_engine
+      #   target: /var/run/docker.sock
+
     networks:
       - web
 
@@ -20,7 +37,6 @@ services:
     container_name: orderservice
     build: .
     command: [ "/app/ordersystem" ]
-    # todo add traefik labels
     environment:
       - POSTGRES_DB=order
       - POSTGRES_USER=docker
@@ -30,14 +46,29 @@ services:
     networks:
       - intercom
       - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.orderservice.rule=Host(`orders.localhost`)"
+      - "traefik.http.routers.orderservice.entrypoints=web"
+      - "traefik.http.services.orderservice.loadbalancer.server.port=3000"
+
 
   sws:
     image: joseluisq/static-web-server:latest
-    # todo add frontend folder as volume
-    # todo setup environment variables to expose port 80 and serve the frontend folder
-    # todo add traefik labels
+    container_name: sws
+    environment:
+      - SERVER_ROOT=/public
+      - SERVER_PORT=80
+    volumes:
+      - ./frontend:/public:ro
     networks:
       - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sws.rule=Host(`localhost`)"
+      - "traefik.http.routers.sws.entrypoints=web"
+      - "traefik.http.services.sws.loadbalancer.server.port=80"
+
 
   order-postgres:
     image: postgres:latest
