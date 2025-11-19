@@ -7,6 +7,7 @@ networks:
 volumes:
   order_pg_vol:
   # todo
+  order_minio_vol:
 
 services:
   traefik:
@@ -29,6 +30,8 @@ services:
 
   orderservice:
     build: .
+    ports:
+      - "3000:3000"
     restart: unless-stopped
     command: [ "/app/ordersystem" ]
     labels:
@@ -86,3 +89,16 @@ services:
     # use the following commands: "server", "--address", ":8500", "/data"
     # map the data volume
     # set environment variables MINIO_ROOT_USER and MINIO_ROOT_PASSWORD
+    image: minio/minio:latest
+    ports:
+      - "8500:8500"
+      - "8501:8501"
+    networks:
+      - intercom
+    command: [ "server", "--address", ":8500", "--console-address", ":8501", "/data" ]
+    volumes:
+      - order_minio_vol:/data
+    environment:
+      MINIO_ROOT_USER: root
+      MINIO_ROOT_PASSWORD: verysecret
+      MINIO_DEFAULT_BUCKETS: receipts

@@ -3,12 +3,15 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"ordersystem/httptools"
 	"ordersystem/model"
 	"ordersystem/repository"
+	"ordersystem/storage"
+	"strings"
 
 	"github.com/go-chi/render"
 	"github.com/minio/minio-go/v7"
@@ -114,12 +117,31 @@ func GetReceiptFile(db *repository.DatabaseHandler, s3 *minio.Client) http.Handl
 		// Get the file from s3 using s3.GetObject(), the bucket name is defined in storage.OrdersBucket
 		// dbOrder.Filename() can be used to get the filename.
 		// handle any error!
+		object, err := s3.GetObject(
+			r.Context(),
+			storage.OrdersBucket,
+			order.GetFilename(),
+			minio.GetObjectOptions{},
+		)
+		if err != nil {
+			slog.Error("Unable to read receipt from S3", slog.String("error", err.Error()))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, "Unable to load receipt file")
+			return
+		}
 
 		// serve file
 		// todo
 		// set the correct header on w http.ResponseWriter ("Content-Type" and "Content-Disposition")
 		// Use the correct filename for "Content-Disposition" (https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Disposition)
 		// io.Copy can be used to write the result of s3.GetObject() to w http.ResponseWriter
+		w.Header().Set("Content-Type", "text/markdown")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", order.GetFilename()))
+
+		_, err = io.Copy(w, object)
+		if err != nil {
+			slog.Error("Unable to send receipt file", slog.String("error", err.Error()))
+		}
 	}
 }
 
@@ -167,6 +189,26 @@ func PostOrder(db *repository.DatabaseHandler, s3 *minio.Client) http.HandlerFun
 		// Size of the file is determined by the string.
 		// Use the following PutObjectOptions: minio.PutObjectOptions{ContentType: "text/markdown"}
 		// Handle errors!
+		md := dbOrder.ToMarkdown()
+		reader := strings.NewReader(md)
+
+		_, err = s3.PutObject(
+			r.Context(),
+			storage.OrdersBucket,
+			dbOrder.GetFilename(),
+			reader,
+			int64(len(md)),
+			minio.PutObjectOptions{
+				ContentType: "text/markdown",
+			},
+		)
+		if err != nil {
+			slog.Error("Unable to write receipt to S3", slog.String("error", err.Error()))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, "Unable to create receipt")
+			return
+		}
+
 		render.Status(r, http.StatusOK)
 		render.JSON(w, r, "ok")
 	}
